@@ -1,6 +1,5 @@
 ##########Script for creation and evaluation of a correlation matrix from the Species Suitability matrix
 
-
 .libPaths("E:/R packages351")
 require(corpcor)
 require(tseries)
@@ -9,20 +8,51 @@ require(pcaPP)
 require(reshape2)
 require(corrplot)
 require(PerformanceAnalytics)
+library(foreach)
+
 rm(list=ls())
 wd=tk_choose.dir(); setwd(wd)
 
 #treeSuit <- read.csv("TreeSuitabilitybySS_Reversed2.csv") # species by siteseries suitability matrix with n/As replaced with zeros and the suitability ranks reversed
 treeSuitraw <- read.csv ("TreeSppSuit_v10.10.csv")
-treeSuit$Suitability <- ifelse(treeSuit$Suitability %in% c('3'), 1, 
-                           ifelse(treeSuit$Suitability %in% c('2'), 2, 
-                             ifelse(treeSuit$Suitability %in% c('1'), 3,treeSuit$Suitability )))
+#treeSuit$Suitability <- ifelse(treeSuit$Suitability %in% c('3'), 1, 
+ #                          ifelse(treeSuit$Suitability %in% c('2'), 2, 
+  #                           ifelse(treeSuit$Suitability %in% c('1'), 3,treeSuit$Suitability )))
 treeSuitraw$All <- paste(treeSuitraw$Unit, treeSuitraw$Spp)
 treeSuitremove <- treeSuitraw[duplicated(treeSuitraw$All),]# remove duplicate entries 
 treeSuitnew <-treeSuitraw[!duplicated(treeSuitraw$All),]
 treeSuit <- treeSuitraw[,-c(5)]
 treeSuitMatrix <- dcast(treeSuit, Unit ~ Spp, mean)
 treeSuitMatrix[is.na(treeSuitMatrix)] <- 0
+
+####Kiri###################
+treeSuitMatrix <- treeSuitMatrix[,-1]
+nonZero <- apply(treeSuitMatrix, 2, FUN = function(x){return(length(x[x != 0]))}) ###number of non-zero entries
+treeSuitMatrix <- treeSuitMatrix[,nonZero > 3] ###remove species with 3 or less entries
+len <- length(treeSuitMatrix)
+
+###calculate pairwise correlations
+out <- foreach(Spp1 = as.character(colnames(treeSuitMatrix)), .combine = rbind) %do% {
+  #pos = grep(Spp1, colnames(treeSuitMatrix))
+  names <- as.character(colnames(treeSuitMatrix))
+  foreach(Spp2 = names, .combine = rbind) %do% {
+    sub <- treeSuitMatrix[,c(Spp1,Spp2)]
+    sub <- sub[rowSums(sub) != 0,] ### remove where both species are non-existant
+    sub[sub == 0] <- 5 ###replace 0 with 5
+    correl <- cor(sub[,1],sub[,2])
+    out <- data.frame(Spp1 = Spp1, Spp2 = Spp2, Value = correl)
+    out
+  }
+}
+
+mat <- dcast(out, Spp1 ~ Spp2, value.var = "Value") ###convert to matrix
+rownames(mat) <- mat$Spp1
+mat <- mat[,-1]
+mat <- as.matrix(mat)
+png("PairwiseCorr.png", width = 6, height = 6, units = "in", res = 300)
+corrplot(mat,type = "upper", order = "original", tl.col = "black", tl.srt = 45, tl.cex = .5, is.corr = FALSE)
+dev.off()
+#########End Kiri################
 
 write.csv(treeSuitMatrix, "TreeSuitability Matrix.csv")
 ##create correlation matrix
@@ -82,8 +112,6 @@ for (i in 1:length(av_variables)){
   corr_combinations <- corr_combinations[order(corr_combinations$cor),]
   corr_combinations<-corr_combinations[corr_combinations$cor >0.95, ] 
 }
-
-
 
 
 corr.test <- cor.shrink(treeSuitMatrix[,-1],lambda = 0)
