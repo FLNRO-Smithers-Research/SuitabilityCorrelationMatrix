@@ -1,5 +1,5 @@
 ##########Script for creation and evaluation of a correlation matrix from the Species Suitability matrix
-
+rm(list=ls())
 .libPaths("E:/R packages351")
 require(corpcor)
 require(tseries)
@@ -10,25 +10,26 @@ require(corrplot)
 require(PerformanceAnalytics)
 library(foreach)
 
-rm(list=ls())
 wd=tk_choose.dir(); setwd(wd)
 
 #treeSuit <- read.csv("TreeSuitabilitybySS_Reversed2.csv") # species by siteseries suitability matrix with n/As replaced with zeros and the suitability ranks reversed
 treeSuitraw <- read.csv ("TreeSppSuit_v10.10.csv")
-#treeSuit$Suitability <- ifelse(treeSuit$Suitability %in% c('3'), 1, 
- #                          ifelse(treeSuit$Suitability %in% c('2'), 2, 
-  #                           ifelse(treeSuit$Suitability %in% c('1'), 3,treeSuit$Suitability )))
+treeSuitraw$Suitability <- ifelse(treeSuitraw$Suitability %in% c('3'), 100, 
+                           ifelse(treeSuitraw$Suitability %in% c('2'), 80, 
+                             ifelse(treeSuitraw$Suitability %in% c('1'), 40,treeSuitraw$Suitability )))
 treeSuitraw$All <- paste(treeSuitraw$Unit, treeSuitraw$Spp)
 treeSuitremove <- treeSuitraw[duplicated(treeSuitraw$All),]# remove duplicate entries 
 treeSuitnew <-treeSuitraw[!duplicated(treeSuitraw$All),]
 treeSuit <- treeSuitraw[,-c(5)]
+select <- c("Ba","Bl","Cw", "Fd", "Hw", "Lw", "Pl", "Ss", "Sx", "Yc")# select tree species to run in correlation
+treeSuit <- treeSuit[treeSuit$Spp %in% select,]
 treeSuitMatrix <- dcast(treeSuit, Unit ~ Spp, mean)
 treeSuitMatrix[is.na(treeSuitMatrix)] <- 0
 
 ####Kiri###################
 treeSuitMatrix <- treeSuitMatrix[,-1]
 nonZero <- apply(treeSuitMatrix, 2, FUN = function(x){return(length(x[x != 0]))}) ###number of non-zero entries
-treeSuitMatrix <- treeSuitMatrix[,nonZero > 3] ###remove species with 3 or less entries
+treeSuitMatrix <- treeSuitMatrix[,nonZero > 40] ###remove species with X or less entries
 len <- length(treeSuitMatrix)
 
 ###calculate pairwise correlations
@@ -37,9 +38,9 @@ out <- foreach(Spp1 = as.character(colnames(treeSuitMatrix)), .combine = rbind) 
   names <- as.character(colnames(treeSuitMatrix))
   foreach(Spp2 = names, .combine = rbind) %do% {
     sub <- treeSuitMatrix[,c(Spp1,Spp2)]
-    sub <- sub[rowSums(sub) != 0,] ### remove where both species are non-existant
-    sub[sub == 0] <- 5 ###replace 0 with 5
-    correl <- cor(sub[,1],sub[,2])
+    #sub <- sub[rowSums(sub) != 0,] ### remove where both species are non-existant
+    #sub[sub == 0] <- 5 ###replace 0 with 5
+    correl <- cor(sub[,1],sub[,2], method="spearman")
     out <- data.frame(Spp1 = Spp1, Spp2 = Spp2, Value = correl)
     out
   }
@@ -54,13 +55,16 @@ corrplot(mat,type = "upper", order = "original", tl.col = "black", tl.srt = 45, 
 dev.off()
 #########End Kiri################
 
-write.csv(treeSuitMatrix, "TreeSuitability Matrix.csv")
+write.csv(mat, "TreeSuitability Matrix.csv")
+
+####OLD
+
 ##create correlation matrix
-corr.spearman <- cor(treeSuitMatrix[,-1], method=c("spearman"))
+corr.spearman <- cor(treeSuitMatrix[,c("Ba","Bl","Cw", "Fd", "Hw", "Lw", "Pl", "Ss", "Sx", "Yc")], method=c("spearman"))
 ##Graphical output1
 corrplot(corr.spearman,type = "lower", order = "hclust", tl.col = "black", tl.srt = 45, tl.cex = .5, is.corr = TRUE)
 ##Graphical output correlations limited species
-my_data <- corr.spearman[, c("Bl","Cw","Pl", "Lw", "Sx", "La")]
+my_data <- corr.spearman[, c("Ba", "Bg", "Bl","Cw","Pl", "Lw", "Sx", "Yc")]
 chart.Correlation(my_data, histogram = TRUE, pch = 19)
 ##Graphical heatmap
 col <- colorRampPalette(c("darkblue", "white", "darkorange"))(10)
